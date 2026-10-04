@@ -53,3 +53,9 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+#my output file which i run when testing the project
+imageview
+
+#testing images
+images
