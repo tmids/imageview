@@ -2,5 +2,7 @@
 ## www.tmidsisthebest.org
 
 # imageview
-An image viewer written fully manually* in c \n* except for the copy pasted code from stackoverflow
+An image viewer written fully manually* in c 
+
+* except for the copy pasted code from stackoverflow
 
