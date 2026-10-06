@@ -59,3 +59,8 @@ imageview
 
 #testing images
 images
+
+#i use emacs so disable anything it can create automatically
+
+.#*
+#~

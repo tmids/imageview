@@ -13,5 +13,5 @@ An image viewer written fully manually* in c
 ---
 
 > Support list
-* PBM, PGM, PPM - P3 (doesn't support any images with comments yet) :(
+* PBM, PGM, PPM - P1, P2, P3 (doesn't support any images with comments yet) :(
 * Supports scaling the image with mouse wheel
