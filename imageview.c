@@ -24,7 +24,8 @@ struct Program {
 void loadImage(struct Program *program, char *filename, FILE *file);
 void skipCommentsPPM(FILE *file);
 void loadPPM(struct Program *program, FILE *file);
-void loadPPMP3(struct Program *program, FILE *file);
+void drawPPMASCIIToSurface(struct Program *program, FILE *file, uint8_t format);
+void drawPPMRawToSurface(struct Program *program, FILE *file, uint8_t format);
 void SDL_Shutdown(struct Program *program, int exit_code);
 int SDL_MyInit(struct Program *program);
 int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], int WINDOW_WIDTH, int WINDOW_HEIGHT);
@@ -113,7 +114,8 @@ void event_handler(struct Program *program) {
      }
      case SDL_MOUSEWHEEL: {
        uint8_t scroll = event.wheel.y;
-       program->image.zoom -= scroll;    
+       program->image.zoom -= scroll;
+       break;
      }
      }
    }
@@ -154,7 +156,7 @@ void updateWindow(struct Program *program) {
   SDL_UpdateWindowSurface(program->window);
 }
 
-void loadPPM(struct Program *program, FILE *file) {
+void loadPPM(struct Program *program, FILE *file) ;{
   struct Image *image = &program->image;
   char format[3];
   char buffer;
@@ -181,23 +183,36 @@ void loadPPM(struct Program *program, FILE *file) {
   image->depth = d;
   image->surface = SDL_CreateRGBSurfaceWithFormat(0, w, h, 8, SDL_PIXELFORMAT_RGBA8888);
 
-  if (!strcmp(&format[1], "3")) {
-    printf("loading ppm\n");
-    loadPPMP3(program, file);
-  } else {
-    printf("Unsupported PPM format! %s\n", format);
-  } 
+  drawPPMASCIIToSurface(program, file, format[1]);
 }
 
-void loadPPMP3(struct Program *program, FILE *file) {
-  printf("loading ppm in p3 format\n");
-  int16_t r, g, b;
+void drawPPMRawToSurface(struct Program *program, FILE *file, uint8_t format) {}
+
+void drawPPMASCIIToSurface(struct Program *program, FILE *file, uint8_t format) {
+  printf("loading ppm in p%c format\n", format);
+  uint16_t r, g, b;
   uint8_t a = 255;
   int32_t w = program->image.surface->w;
   int32_t h = program->image.surface->h;
   for (int y = 1; y<=h; y++) {
     for (int x = 1; x<=w; x++) {
-      fscanf(file, "%hu %hu %hu", &r, &g, &b);
+      switch (format) {
+      case '1': {
+	fscanf(file, "%hu", &r);
+	r *= 255;
+	g = r; b = r;
+	break;
+      }
+     case '2': {
+ 	fscanf(file, "%hu", &r);
+	g = r; b = r;
+	break;
+      }
+      case '3': {
+	fscanf(file, "%hu %hu %hu", &r, &g, &b);
+	break;
+	}
+      }
       drawPixel(program->image.surface, x, y, r, g, b, a);
     }
   }
