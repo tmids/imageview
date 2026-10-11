@@ -2,12 +2,14 @@
 // www.tmidsisthebest.org
 // prewritten code for sdl programs so that i wouldnt need to rewrite the same thing over and over again
 #include <SDL2/SDL.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
 
 struct Image {
   SDL_Surface *surface;
+  //  size_t w, h;
   uint16_t depth;
   uint8_t zoom;
   char format[20];
@@ -22,15 +24,16 @@ struct Program {
 
 
 void loadImage(struct Program *program, char *filename, FILE *file);
-void skipCommentsPPM(FILE *file);
-void loadPPM(struct Program *program, FILE *file);
-void drawPPMASCIIToSurface(struct Program *program, FILE *file, uint8_t format);
-void drawPPMRawToSurface(struct Program *program, FILE *file, uint8_t format);
+void skipCommentsPPM(struct Program *program, FILE *file);
+void loadPPM(struct Program *program, char *filename, FILE *file);
+void drawPPMASCIIToSurface(struct Program *program, FILE *file, char format);
+void drawPPMRawToSurface(struct Program *program, FILE *file, char format);
 void SDL_Shutdown(struct Program *program, int exit_code);
 int SDL_MyInit(struct Program *program);
-int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], int WINDOW_WIDTH, int WINDOW_HEIGHT);
-void drawPixel(SDL_Surface *surface, uint32_t x, uint32_t y, uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], size_t WINDOW_WIDTH, size_t WINDOW_HEIGHT);
+void drawPixel(SDL_Surface *surface, size_t x, size_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
 void updateWindow(struct Program *program);
+
 
 // Source - https://stackoverflow.com/a/53067795
 // Posted by Danny
@@ -68,7 +71,7 @@ switch (bpp)
       }
 }
 
-int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], int WINDOW_WIDTH, int WINDOW_HEIGHT) {
+int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], size_t WINDOW_WIDTH, size_t WINDOW_HEIGHT) {
    program->window =
        SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED,
 			SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
@@ -95,13 +98,23 @@ int SDL_MyInit(struct Program *program) {
    return 0;
  }
 
-void skipCommentsPPM(FILE *file) {
-  char buffer;
-  while (buffer=='#') {
-    while (buffer=='\n') {
+void skipCommentsPPM(struct Program *program, FILE *file) {
+  int buffer = fgetc(file);
+  while (buffer!=EOF) {
+    switch (buffer) {
+    case ' ': case '\n': case '\t': case '\r':
       buffer = fgetc(file);
+      break;
+    case '#':
+      while ((buffer = fgetc(file))!='\n') {}
+      buffer = fgetc(file);
+      break;
+    default:
+      ungetc(buffer, file);
+      return;
     }
   }
+  SDL_Shutdown(program, EXIT_FAILURE);
 }
 
 void event_handler(struct Program *program) {
@@ -115,12 +128,12 @@ void event_handler(struct Program *program) {
      case SDL_MOUSEWHEEL: {
        uint8_t scroll = event.wheel.y;
        program->image.zoom -= scroll;
+       if (program->image.zoom<=1) {program->image.zoom = 1;}
+       if (program->image.zoom>=255) {program->image.zoom = 255;}
        break;
      }
      }
    }
-   if (program->image.zoom<=1) {program->image.zoom = 1;}
-   if (program->image.zoom>=255) {program->image.zoom = 255;}
    SDL_SetWindowSize(program->window, program->image.surface->w*program->image.zoom/100, program->image.surface->h*program->image.zoom/100);
  }
 
@@ -133,7 +146,7 @@ void event_handler(struct Program *program) {
    exit(exit_status);
  }
 
-void drawPixel(SDL_Surface *surface, uint32_t x, uint32_t y, uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
+void drawPixel(SDL_Surface *surface, size_t x, size_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
   SDL_FillRect(surface, &(SDL_Rect){.x=x,.y=y,.w=1,.h=1,}, SDL_MapRGBA(surface->format, r, g, b, a));
 }
 
@@ -145,8 +158,8 @@ void updateWindow(struct Program *program) {
   w = window->w;
   h = window->h;
   SDL_FillRect(window, NULL, SDL_MapRGBA(window->format, 0, 0, 0, 255));
-  for (int desty = 1; desty<h; desty++) {
-    for (int destx = 1; destx<w; destx++) { 
+  for (size_t desty = 1; desty<h; desty++) {
+    for (size_t destx = 1; destx<w; destx++) { 
       srcx = program->image.surface->w*destx/w; // srcx/program->image.surface->w == destx/w
       srcy = program->image.surface->h*desty/h;
       SDL_GetRGBA(getPixel(program->image.surface, srcx, srcy), program->image.surface->format, &r, &g, &b, &a);
@@ -156,60 +169,104 @@ void updateWindow(struct Program *program) {
   SDL_UpdateWindowSurface(program->window);
 }
 
-void loadPPM(struct Program *program, FILE *file) {
+void loadPPM(struct Program *program, char *filename, FILE *file) {
   struct Image *image = &program->image;
-  char format[3];
+  char format;
   char buffer;
   uint32_t w, h;
   uint16_t d;
 
-  skipCommentsPPM(file);
-  
-  fgets(format, 3, file);
+  skipCommentsPPM(program, file);
 
+  fscanf(file, "%*c%c", &format);
   //can't imagine a better way than to just slap this inbeetwen every file action
-  skipCommentsPPM(file);
-    
-  fscanf(file, "%d %d", &w, &h);
+  skipCommentsPPM(program, file);
   
-  skipCommentsPPM(file);
+  fscanf(file, "%d", &w);
+  skipCommentsPPM(program, file);
+  
+  if (format!='1'||format!='4') {
+    fscanf(file, "%d", &h);
+    skipCommentsPPM(program, file);
+  }
 
   printf("w,h:%d,%d\n", w, h);
 
   fscanf(file, "%hu", &d);
-
-  skipCommentsPPM(file);
+  skipCommentsPPM(program, file);
  
   image->depth = d;
+  //image->w = w;
+  //image->h = h;
   image->surface = SDL_CreateRGBSurfaceWithFormat(0, w, h, 8, SDL_PIXELFORMAT_RGBA8888);
 
-  drawPPMASCIIToSurface(program, file, format[1]);
+  switch (format) {
+  case '1': case '2': case '3':
+    drawPPMASCIIToSurface(program, file, format);
+    break;
+  case '4': case '5': case '6':
+    drawPPMRawToSurface(program, file, format);
+    break;
+  }
 }
 
-void drawPPMRawToSurface(struct Program *program, FILE *file, uint8_t format) {}
+ void drawPPMRawToSurface(struct Program *program, FILE *file, char format) {
+printf("loading ppm in p%c format\n", format);
+  uint8_t r, g, b;
+  uint8_t a = 255;
+  size_t w = program->image.surface->w;
+  size_t h = program->image.surface->h;
+  for (size_t y = 1; y<=h; y++) {
+    for (size_t x = 1; x<=w; x++) {
+      switch (format) {
+      case '4': {
+	fread(&r, 8, 1, file);
+	r *= 255;
+	printf("color value: %d\n", r);
+	g = r; b = r;
+	break;
+      }
+     case '5': {
+ 	break;
+      }
+      case '6': {
+	break;
+	}
+      }
+      drawPixel(program->image.surface, x, y, r, g, b, a);
+    }
+  }  
+}
 
-void drawPPMASCIIToSurface(struct Program *program, FILE *file, uint8_t format) {
+void drawPPMASCIIToSurface(struct Program *program, FILE *file, char format) {
   printf("loading ppm in p%c format\n", format);
   uint16_t r, g, b;
   uint8_t a = 255;
   int32_t w = program->image.surface->w;
   int32_t h = program->image.surface->h;
-  for (int y = 1; y<=h; y++) {
-    for (int x = 1; x<=w; x++) {
+  for (size_t y = 1; y<=h; y++) {
+    for (size_t x = 1; x<=w; x++) {
       switch (format) {
       case '1': {
+	skipCommentsPPM(program, file);
 	fscanf(file, "%hu", &r);
 	r *= 255;
 	g = r; b = r;
 	break;
       }
      case '2': {
+	skipCommentsPPM(program, file);
  	fscanf(file, "%hu", &r);
 	g = r; b = r;
 	break;
       }
       case '3': {
-	fscanf(file, "%hu %hu %hu", &r, &g, &b);
+	skipCommentsPPM(program, file);
+	fscanf(file, "%hu", &r);
+	skipCommentsPPM(program, file);
+	fscanf(file, "%hu", &g);
+	skipCommentsPPM(program, file);
+	fscanf(file, "%hu", &b);
 	break;
 	}
       }
@@ -222,7 +279,7 @@ void loadImage(struct Program *program, char *filename, FILE *file) {
   char *suffix = strrchr(filename, '.')+1;
   
   if (!strcmp(suffix, "ppm") || !strcmp(suffix, "pbm") || !strcmp(suffix, "pgm")) {
-    loadPPM(program, file);
+    loadPPM(program, filename, file);
   } else {
     printf("unsupported image type! %s\n", suffix);
   }
@@ -235,7 +292,7 @@ int main(int argC, char *argV[]) {
     .image = {.zoom=100,}
   };
 
-  FILE *file = fopen(argV[1], "r");
+  FILE *file = fopen(argV[1], "rb");
   if (file==NULL) {
     printf("Couldn't open file! %s\n", argV[1]);
     SDL_Shutdown(&program, EXIT_FAILURE);

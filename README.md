@@ -1,3 +1,4 @@
+
 > written manually by tmids
 > www.tmidsisthebest.org
 
@@ -13,5 +14,5 @@ An image viewer written fully manually* in c
 ---
 
 > Support list
-* PBM, PGM, PPM - P1, P2, P3 (doesn't support any images with comments yet) :(
+* PBM, PGM, PPM - P1, P2, P3 (P4 to P6 in development)
 * Supports scaling the image with mouse wheel
