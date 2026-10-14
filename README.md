@@ -14,5 +14,6 @@ An image viewer written fully manually* in c
 ---
 
 > Support list
-* PBM, PGM, PPM - P1, P2, P3 (P4 to P6 in development)
+* Netpbm images
 * Supports scaling the image with mouse wheel
+* PNG is in development next

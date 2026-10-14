@@ -10,7 +10,7 @@
 struct Image {
   SDL_Surface *surface;
   //  size_t w, h;
-  uint16_t depth;
+  uint16_t maxColor;
   uint8_t zoom;
   char format[20];
   char title[256];
@@ -22,18 +22,24 @@ struct Program {
   struct Image image;
 };
 
-
+uint8_t getBit(size_t number, size_t bit);
 void loadImage(struct Program *program, char *filename, FILE *file);
 void skipCommentsPPM(struct Program *program, FILE *file);
 void loadPPM(struct Program *program, char *filename, FILE *file);
 void drawPPMASCIIToSurface(struct Program *program, FILE *file, char format);
-void drawPPMRawToSurface(struct Program *program, FILE *file, char format);
+void drawPBMRawToSurface(struct Program *program, FILE *file);
+void drawPGMRawToSurface(struct Program *program, FILE *file);
+void drawPPMRawToSurface(struct Program *program, FILE *file);
 void SDL_Shutdown(struct Program *program, int exit_code);
 int SDL_MyInit(struct Program *program);
 int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], size_t WINDOW_WIDTH, size_t WINDOW_HEIGHT);
-void drawPixel(SDL_Surface *surface, size_t x, size_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+void drawPixel(SDL_Surface *surface, size_t x, size_t y, uint16_t r, uint16_t g, uint16_t b, uint16_t a, uint16_t m);
 void updateWindow(struct Program *program);
 
+uint8_t getBit(size_t number, size_t bit) {
+  if (sizeof(number)*8<bit) {return 0;}
+  return (number>>(8-bit))&1;
+}
 
 // Source - https://stackoverflow.com/a/53067795
 // Posted by Danny
@@ -81,6 +87,7 @@ int SDL_InitWindow(struct Program *program, char WINDOW_TITLE[256], size_t WINDO
    }
 
    return 0;
+
 }
 
 int SDL_MyInit(struct Program *program) {
@@ -114,7 +121,8 @@ void skipCommentsPPM(struct Program *program, FILE *file) {
       return;
     }
   }
-  SDL_Shutdown(program, EXIT_FAILURE);
+  //printf("Reached EOF!\n");
+  //SDL_Shutdown(program, EXIT_FAILURE);
 }
 
 void event_handler(struct Program *program) {
@@ -125,9 +133,9 @@ void event_handler(struct Program *program) {
        SDL_Shutdown(program, EXIT_SUCCESS);
        break;
      }
-     case SDL_MOUSEWHEEL: {
+     case SDL_MOUSEWHEEL: { 
        uint8_t scroll = event.wheel.y;
-       program->image.zoom -= scroll;
+       program->image.zoom -= event.wheel.y;
        if (program->image.zoom<=1) {program->image.zoom = 1;}
        if (program->image.zoom>=255) {program->image.zoom = 255;}
        break;
@@ -135,7 +143,8 @@ void event_handler(struct Program *program) {
      }
    }
    SDL_SetWindowSize(program->window, program->image.surface->w*program->image.zoom/100, program->image.surface->h*program->image.zoom/100);
- }
+   updateWindow(program);
+}
 
  void SDL_Shutdown(struct Program *program, int exit_status) {
    //   SDL_DestroyRenderer(program->renderer);
@@ -146,7 +155,10 @@ void event_handler(struct Program *program) {
    exit(exit_status);
  }
 
-void drawPixel(SDL_Surface *surface, size_t x, size_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+void drawPixel(SDL_Surface *surface, size_t x, size_t y, uint16_t r, uint16_t g, uint16_t b, uint16_t a, uint16_t m) {
+  r = r*255/m;
+  g = g*255/m;
+  b = b*255/m;
   SDL_FillRect(surface, &(SDL_Rect){.x=x,.y=y,.w=1,.h=1,}, SDL_MapRGBA(surface->format, r, g, b, a));
 }
 
@@ -154,6 +166,7 @@ void updateWindow(struct Program *program) {
   SDL_Surface *window = SDL_GetWindowSurface(program->window);
   int32_t w, h, srcx, srcy;
   uint8_t r, g, b, a;
+  uint8_t m = 255;
   //SDL_GetWindowSize(program->window, &w, &h);
   w = window->w;
   h = window->h;
@@ -163,7 +176,7 @@ void updateWindow(struct Program *program) {
       srcx = program->image.surface->w*destx/w; // srcx/program->image.surface->w == destx/w
       srcy = program->image.surface->h*desty/h;
       SDL_GetRGBA(getPixel(program->image.surface, srcx, srcy), program->image.surface->format, &r, &g, &b, &a);
-      drawPixel(window, destx, desty, r, g, b, a);
+      drawPixel(window, destx, desty, r, g, b, a, m);
     }
   }
   SDL_UpdateWindowSurface(program->window);
@@ -173,29 +186,29 @@ void loadPPM(struct Program *program, char *filename, FILE *file) {
   struct Image *image = &program->image;
   char format;
   char buffer;
-  uint32_t w, h;
-  uint16_t d;
+  size_t w, h;
+  uint16_t m;
 
   skipCommentsPPM(program, file);
 
   fscanf(file, "%*c%c", &format);
-  //can't imagine a better way than to just slap this inbeetwen every file action
+  //can't imagine a better way than to just slap this inbeetwen every file read
   skipCommentsPPM(program, file);
   
-  fscanf(file, "%d", &w);
+  fscanf(file, "%zu", &w);
   skipCommentsPPM(program, file);
+
+  fscanf(file, "%zu", &h);
+  skipCommentsPPM(program, file);
+
+  printf("w,h:%zu,%zu\n", w, h);
+  if (format=='1' || format=='4') {m=1;}
+  else {fscanf(file, "%hu", &m);}
+  skipCommentsPPM(program, file);
+
+  printf("%hu, %c\n", m, format);
   
-  if (format!='1'||format!='4') {
-    fscanf(file, "%d", &h);
-    skipCommentsPPM(program, file);
-  }
-
-  printf("w,h:%d,%d\n", w, h);
-
-  fscanf(file, "%hu", &d);
-  skipCommentsPPM(program, file);
- 
-  image->depth = d;
+  image->maxColor = m;
   //image->w = w;
   //image->h = h;
   image->surface = SDL_CreateRGBSurfaceWithFormat(0, w, h, 8, SDL_PIXELFORMAT_RGBA8888);
@@ -204,53 +217,90 @@ void loadPPM(struct Program *program, char *filename, FILE *file) {
   case '1': case '2': case '3':
     drawPPMASCIIToSurface(program, file, format);
     break;
-  case '4': case '5': case '6':
-    drawPPMRawToSurface(program, file, format);
+  case '4':
+    drawPBMRawToSurface(program, file);
+    break;
+  case '5':
+    drawPGMRawToSurface(program, file);
+    break;
+  case '6':
+    drawPPMRawToSurface(program, file);
     break;
   }
 }
 
- void drawPPMRawToSurface(struct Program *program, FILE *file, char format) {
-printf("loading ppm in p%c format\n", format);
-  uint8_t r, g, b;
+void printbits(int number) {
+  for (int bit = 1; bit<=8; bit++) {
+    printf("%d", getBit(number, bit));
+  }
+}
+
+void drawPBMRawToSurface(struct Program *program, FILE *file) {
+  printf("loading ppm in p4 format\n");
+  uint16_t r, g, b;
+  uint16_t m = 1;
+  uint8_t a = 255;
+  size_t w = program->image.surface->w;
+  size_t h = program->image.surface->h;
+  uint8_t buffer;
+  for (size_t y = 1; y<=h; y++) {
+    for (size_t x = 1; x<=w; x++) {
+      if (x%8==0) {fread(&buffer, 1, 1, file);}
+      r = getBit(buffer, (x%8)+1);
+      g = r; b = r;
+      drawPixel(program->image.surface, x, y, r, g, b, a, m);
+    }
+  }
+}
+
+void drawPGMRawToSurface(struct Program *program, FILE *file) {
+  printf("loading ppm in p5 format\n");
+  uint16_t r, g, b;
+  uint16_t m = program->image.maxColor;
+  uint8_t a = 255;
+  size_t w = program->image.surface->w;
+  size_t h = program->image.surface->h;
+  for (size_t y = 1; y<=h; y++) {
+    for (size_t x = 1; x<=w; x++) {
+      fread(&r, 1, 1, file);
+      g = r; b = r;
+      //      printbits(buffer);
+      drawPixel(program->image.surface, x, y, r, g, b, a, m);
+    }
+  }
+}
+
+void drawPPMRawToSurface(struct Program *program, FILE *file) {
+  printf("loading ppm in p6 format\n");
+  uint16_t r, g, b;
+  uint16_t m = program->image.maxColor;
+  uint8_t a = 255;
+  size_t w = program->image.surface->w;
+  size_t h = program->image.surface->h;
+  for (size_t y = 1; y<=h; y++) {
+    for (size_t x = 1; x<=w; x++) {
+      fread(&r, 1, 1, file);
+      fread(&g, 1, 1, file);
+      fread(&b, 1, 1, file);
+      //      printbits(buffer);
+      drawPixel(program->image.surface, x, y, r, g, b, a, m);
+    }
+  }  
+}
+void drawPPMASCIIToSurface(struct Program *program, FILE *file, char format) {
+  printf("loading ppm in p%c format\n", format);
+  uint16_t r, g, b;
+  uint16_t m = program->image.maxColor;
+  printf("%hu", m);
   uint8_t a = 255;
   size_t w = program->image.surface->w;
   size_t h = program->image.surface->h;
   for (size_t y = 1; y<=h; y++) {
     for (size_t x = 1; x<=w; x++) {
       switch (format) {
-      case '4': {
-	fread(&r, 8, 1, file);
-	r *= 255;
-	printf("color value: %d\n", r);
-	g = r; b = r;
-	break;
-      }
-     case '5': {
- 	break;
-      }
-      case '6': {
-	break;
-	}
-      }
-      drawPixel(program->image.surface, x, y, r, g, b, a);
-    }
-  }  
-}
-
-void drawPPMASCIIToSurface(struct Program *program, FILE *file, char format) {
-  printf("loading ppm in p%c format\n", format);
-  uint16_t r, g, b;
-  uint8_t a = 255;
-  int32_t w = program->image.surface->w;
-  int32_t h = program->image.surface->h;
-  for (size_t y = 1; y<=h; y++) {
-    for (size_t x = 1; x<=w; x++) {
-      switch (format) {
       case '1': {
 	skipCommentsPPM(program, file);
 	fscanf(file, "%hu", &r);
-	r *= 255;
 	g = r; b = r;
 	break;
       }
@@ -270,7 +320,7 @@ void drawPPMASCIIToSurface(struct Program *program, FILE *file, char format) {
 	break;
 	}
       }
-      drawPixel(program->image.surface, x, y, r, g, b, a);
+      drawPixel(program->image.surface, x, y, r, g, b, a, m);
     }
   }
 }
@@ -318,7 +368,6 @@ int main(int argC, char *argV[]) {
   
   while (1) {
     event_handler(&program);
-    updateWindow(&program);
   }
   
   return 0;
